@@ -1,0 +1,146 @@
+{
+  "description": "Which incoming URLs the SDK treats as click2 links. Parsing must be lenient (browsers leave characters like | { } and bare % unencoded in App Links). The SDK only calls hosts the app configured.",
+  "hosts": [
+    "acme.click2.page",
+    "acme-test.click2.page"
+  ],
+  "cases": [
+    {
+      "url": "https://acme.click2.page/savings",
+      "expected": true
+    },
+    {
+      "url": "https://acme.click2.page/subs?id=ORD1",
+      "expected": true
+    },
+    {
+      "url": "https://acme-test.click2.page/spring",
+      "expected": true
+    },
+    {
+      "url": "https://Acme.Click2.Page/savings",
+      "expected": true
+    },
+    {
+      "url": "https://acme.click2.page/p/product/123",
+      "expected": true
+    },
+    {
+      "url": "http://acme.click2.page/savings",
+      "expected": false,
+      "why": "only https"
+    },
+    {
+      "url": "https://acme.click2.page/",
+      "expected": false,
+      "why": "no link path"
+    },
+    {
+      "url": "https://acme.click2.page",
+      "expected": false,
+      "why": "no link path"
+    },
+    {
+      "url": "https://acme.click2.page/api/v1/resolve?url=x",
+      "expected": false,
+      "why": "service endpoint"
+    },
+    {
+      "url": "https://acme.click2.page/.well-known/assetlinks.json",
+      "expected": false,
+      "why": "service endpoint"
+    },
+    {
+      "url": "https://acme.click2.page/hooks/datocms",
+      "expected": false,
+      "why": "service endpoint"
+    },
+    {
+      "url": "https://globex.click2.page/savings",
+      "expected": false,
+      "why": "another team's host"
+    },
+    {
+      "url": "https://evil-acme.click2.page/savings",
+      "expected": false
+    },
+    {
+      "url": "https://acme.click2.page.evil.com/savings",
+      "expected": false
+    },
+    {
+      "url": "acmeapp://open/savings",
+      "expected": false,
+      "why": "custom scheme links are the app's own"
+    },
+    {
+      "url": "https://acme.click2.page/savings?utm_content=hero|banner",
+      "expected": true,
+      "why": "unencoded | in query"
+    },
+    {
+      "url": "https://acme.click2.page/savings?x={id}",
+      "expected": true,
+      "why": "unencoded braces"
+    },
+    {
+      "url": "https://acme.click2.page/savings?d=50%off",
+      "expected": true,
+      "why": "bare % in query"
+    },
+    {
+      "url": "https://acme.click2.page/savings#a#b",
+      "expected": true,
+      "why": "odd fragment"
+    },
+    {
+      "url": "https://acme.click2.page./savings",
+      "expected": true,
+      "why": "trailing dot in host"
+    },
+    {
+      "url": "https://acme.click2.page:443/savings",
+      "expected": true,
+      "why": "default https port"
+    },
+    {
+      "url": "https://acme.click2.page:8443/savings",
+      "expected": false,
+      "why": "other port: not served by click2"
+    },
+    {
+      "url": "https://user:pass@acme.click2.page/savings",
+      "expected": false,
+      "why": "userinfo is never part of a click2 link"
+    },
+    {
+      "url": "https://evil.com@acme.click2.page/savings",
+      "expected": false,
+      "why": "userinfo"
+    },
+    {
+      "url": "https://acme.click2.page/API/v1/resolve",
+      "expected": false,
+      "why": "service paths are case-insensitive"
+    },
+    {
+      "url": "https://acme.click2.page/%61pi/v1/resolve",
+      "expected": false,
+      "why": "percent-encoded service path"
+    },
+    {
+      "url": "https://acme.click2.page/p",
+      "expected": false,
+      "why": "passthrough without a path"
+    },
+    {
+      "url": "https://acme.click2.page/p/",
+      "expected": false,
+      "why": "passthrough without a path"
+    },
+    {
+      "url": "https://acme.click2.page/p/coupons",
+      "expected": true
+    }
+  ]
+}

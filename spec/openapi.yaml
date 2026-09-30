@@ -1,0 +1,71 @@
+openapi: 3.1.0
+info:
+  title: click2 app API
+  version: 1.0.0
+  description: |
+    The endpoints the click2 mobile SDKs call. They are served on every team's link host
+    (e.g. https://acme.click2.page, test environment https://acme-test.click2.page);
+    the host decides the team, so no key is needed. Admin/link-management APIs are separate.
+servers:
+  - url: https://{linkHost}
+    variables:
+      linkHost:
+        default: acme.click2.page
+paths:
+  /api/v1/resolve:
+    get:
+      summary: What a clicked link points to
+      description: Also records an "open" (unless X-Tracking-Disabled is 1).
+      parameters:
+        - { name: url, in: query, required: true, schema: { type: string, format: uri }, description: The full clicked link, including its query string. Must be on this team's hosts. }
+        - { name: platform, in: query, schema: { type: string, enum: [ios, android] }, description: Picks the platform's route for deeplinkPath. }
+        - { name: appVersion, in: query, schema: { type: string, maxLength: 32 } }
+        - { name: X-Tracking-Disabled, in: header, schema: { type: string, enum: ["1"] }, description: The user opted out of tracking; nothing is recorded. }
+      responses:
+        "200":
+          description: Resolved link
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResolvedLink" }
+        "400": { description: "url is missing, malformed, or not a link of this team" }
+        "404": { description: "Unknown or expired link" }
+  /api/v1/events:
+    post:
+      summary: Report an install (deferred deep link) or open
+      parameters:
+        - { name: X-Tracking-Disabled, in: header, schema: { type: string, enum: ["1"] } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type: { type: string, enum: [install, open] }
+                url: { type: string, format: uri, description: The link that led to the install }
+                platform: { type: string, enum: [ios, android] }
+                appVersion: { type: string, maxLength: 32 }
+      responses:
+        "204": { description: Recorded }
+        "400": { description: Invalid event }
+components:
+  schemas:
+    ResolvedLink:
+      type: object
+      required: [webOnly, mobileWebOnly, webUrl, iosUrl, androidUrl]
+      properties:
+        alias: { type: string, description: Absent for /p/<path> passthrough links }
+        deeplinkPath:
+          type: string
+          description: In-app route for the requesting platform, without a leading slash, with the clicked link's query string appended. Absent when the link only has web destinations.
+        iosDeeplinkPath: { type: string }
+        androidDeeplinkPath: { type: string }
+        webOnly: { type: boolean, description: Never open the app; open the web URL in the browser. }
+        mobileWebOnly: { type: boolean, description: On phones, show the web URL instead of an app screen. }
+        webUrl: { type: string, format: uri }
+        iosUrl: { type: string, format: uri }
+        androidUrl: { type: string, format: uri }
+        campaign: { type: string }
+        channel: { type: string }
+        feature: { type: string }

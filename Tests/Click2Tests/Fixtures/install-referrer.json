@@ -1,0 +1,55 @@
+{
+  "description": "Android: the Play Store referrer string the click2 fallback page sets (utm_source=smartlink&smartlink=<URL-encoded link>). Some Play Store versions return it still URL-encoded once. Only links on the configured hosts count.",
+  "hosts": [
+    "acme.click2.page",
+    "acme-test.click2.page"
+  ],
+  "cases": [
+    {
+      "referrer": "utm_source=smartlink&smartlink=https%3A%2F%2Facme.click2.page%2Fsubs%3Fid%3DORD1",
+      "expected": "https://acme.click2.page/subs?id=ORD1"
+    },
+    {
+      "referrer": "smartlink=https%3A%2F%2Facme-test.click2.page%2Fspring&utm_source=smartlink",
+      "expected": "https://acme-test.click2.page/spring"
+    },
+    {
+      "referrer": "utm_source=google-play&utm_medium=organic",
+      "expected": null
+    },
+    {
+      "referrer": "",
+      "expected": null
+    },
+    {
+      "referrer": "utm_source=smartlink&smartlink=",
+      "expected": null
+    },
+    {
+      "referrer": "utm_source=smartlink&smartlink=https%3A%2F%2Fevil.com%2Fx",
+      "expected": null
+    },
+    {
+      "referrer": "utm_source=smartlink&smartlink=not%20a%20url",
+      "expected": null
+    },
+    {
+      "referrer": "utm_source%3Dsmartlink%26smartlink%3Dhttps%253A%252F%252Facme.click2.page%252Fsubs%253Fid%253DORD1",
+      "expected": "https://acme.click2.page/subs?id=ORD1",
+      "why": "referrer still URL-encoded once"
+    },
+    {
+      "referrer": "utm_source=smartlink&smartlink=https%3A%2F%2Facme.click2.page%2Fsavings%3Futm_content%3Dhero%7Cbanner",
+      "expected": "https://acme.click2.page/savings?utm_content=hero|banner"
+    },
+    {
+      "referrer": "utm_source=smartlink&smartlink=https%3A%2F%2Facme.click2.page%2Fsavings%3Fq%3Da%2Bb",
+      "expected": "https://acme.click2.page/savings?q=a+b",
+      "why": "%2B stays a plus"
+    },
+    {
+      "referrer": "utm_source=smartlink&smartlink=https%3A%2F%2Fuser%40acme.click2.page%2Fx",
+      "expected": null
+    }
+  ]
+}

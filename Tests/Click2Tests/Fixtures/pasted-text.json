@@ -1,0 +1,12 @@
+{
+  "description": "iOS: text taken from the pasteboard for a deferred deep link. Whitespace is trimmed and the first URL in the text is used; the result must then pass link matching.",
+  "hosts": ["acme.click2.page"],
+  "cases": [
+    { "text": "https://acme.click2.page/savings", "expected": "https://acme.click2.page/savings" },
+    { "text": "  https://acme.click2.page/savings\n", "expected": "https://acme.click2.page/savings" },
+    { "text": "Check this out: https://acme.click2.page/savings?id=1 thanks!", "expected": "https://acme.click2.page/savings?id=1" },
+    { "text": "https://evil.com/savings", "expected": null },
+    { "text": "hello", "expected": null },
+    { "text": "", "expected": null }
+  ]
+}

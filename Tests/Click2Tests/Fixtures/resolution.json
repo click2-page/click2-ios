@@ -1,0 +1,331 @@
+{
+  "description": "How a /api/v1/resolve response becomes what the app should do. action: route (open in-app path), web (open url; inAppBrowser=false means the external browser), failed (reason). Web URLs must be http(s); anything else is treated as a server error. A malformed web URL must not break a link that has an in-app route.",
+  "cases": [
+    {
+      "name": "route to the in-app path",
+      "platform": "android",
+      "status": 200,
+      "body": {
+        "alias": "savings",
+        "deeplinkPath": "savings",
+        "androidDeeplinkPath": "savings",
+        "iosDeeplinkPath": "savings",
+        "webOnly": false,
+        "mobileWebOnly": false,
+        "webUrl": "https://www.acme.com/savings",
+        "iosUrl": "https://www.acme.com/savings",
+        "androidUrl": "https://www.acme.com/savings"
+      },
+      "expected": {
+        "action": "route",
+        "path": "savings"
+      }
+    },
+    {
+      "name": "android uses its own route",
+      "platform": "android",
+      "status": 200,
+      "body": {
+        "deeplinkPath": "android/promo",
+        "androidDeeplinkPath": "android/promo",
+        "iosDeeplinkPath": "ios/promo-screen",
+        "webOnly": false,
+        "mobileWebOnly": false,
+        "webUrl": "https://www.acme.com",
+        "iosUrl": "https://www.acme.com",
+        "androidUrl": "https://www.acme.com"
+      },
+      "expected": {
+        "action": "route",
+        "path": "android/promo"
+      }
+    },
+    {
+      "name": "ios uses its own route",
+      "platform": "ios",
+      "status": 200,
+      "body": {
+        "deeplinkPath": "ios/promo-screen",
+        "androidDeeplinkPath": "android/promo",
+        "iosDeeplinkPath": "ios/promo-screen",
+        "webOnly": false,
+        "mobileWebOnly": false,
+        "webUrl": "https://www.acme.com",
+        "iosUrl": "https://www.acme.com",
+        "androidUrl": "https://www.acme.com"
+      },
+      "expected": {
+        "action": "route",
+        "path": "ios/promo-screen"
+      }
+    },
+    {
+      "name": "platform route wins over a mismatched deeplinkPath",
+      "platform": "ios",
+      "status": 200,
+      "body": {
+        "deeplinkPath": "shared",
+        "iosDeeplinkPath": "ios-only",
+        "webOnly": false,
+        "mobileWebOnly": false,
+        "webUrl": "https://www.acme.com",
+        "iosUrl": "https://www.acme.com",
+        "androidUrl": "https://www.acme.com"
+      },
+      "expected": {
+        "action": "route",
+        "path": "ios-only"
+      }
+    },
+    {
+      "name": "leading slash is removed and the query kept",
+      "platform": "android",
+      "status": 200,
+      "body": {
+        "deeplinkPath": "/orders/substitutions?id=ORD1",
+        "webOnly": false,
+        "mobileWebOnly": false,
+        "webUrl": "https://www.acme.com",
+        "iosUrl": "https://www.acme.com",
+        "androidUrl": "https://www.acme.com"
+      },
+      "expected": {
+        "action": "route",
+        "path": "orders/substitutions?id=ORD1"
+      }
+    },
+    {
+      "name": "web only opens the platform URL in the external browser",
+      "platform": "android",
+      "status": 200,
+      "body": {
+        "deeplinkPath": "ignored",
+        "webOnly": true,
+        "mobileWebOnly": false,
+        "webUrl": "https://www.acme.com/web",
+        "iosUrl": "https://www.acme.com/ios",
+        "androidUrl": "https://www.acme.com/android"
+      },
+      "expected": {
+        "action": "web",
+        "url": "https://www.acme.com/android",
+        "inAppBrowser": false
+      }
+    },
+    {
+      "name": "web only on iOS uses iosUrl",
+      "platform": "ios",
+      "status": 200,
+      "body": {
+        "webOnly": true,
+        "mobileWebOnly": false,
+        "webUrl": "https://www.acme.com/web",
+        "iosUrl": "https://www.acme.com/ios",
+        "androidUrl": "https://www.acme.com/android"
+      },
+      "expected": {
+        "action": "web",
+        "url": "https://www.acme.com/ios",
+        "inAppBrowser": false
+      }
+    },
+    {
+      "name": "mobile web only opens the URL inside the app",
+      "platform": "android",
+      "status": 200,
+      "body": {
+        "deeplinkPath": "ignored",
+        "webOnly": false,
+        "mobileWebOnly": true,
+        "webUrl": "https://www.acme.com/weekly",
+        "iosUrl": "https://www.acme.com/weekly",
+        "androidUrl": "https://www.acme.com/weekly"
+      },
+      "expected": {
+        "action": "web",
+        "url": "https://www.acme.com/weekly",
+        "inAppBrowser": true
+      }
+    },
+    {
+      "name": "no in-app route falls back to the web URL in-app",
+      "platform": "ios",
+      "status": 200,
+      "body": {
+        "alias": "blog",
+        "webOnly": false,
+        "mobileWebOnly": false,
+        "webUrl": "https://www.acme.com/blog",
+        "iosUrl": "https://www.acme.com/blog",
+        "androidUrl": "https://www.acme.com/blog"
+      },
+      "expected": {
+        "action": "web",
+        "url": "https://www.acme.com/blog",
+        "inAppBrowser": true
+      }
+    },
+    {
+      "name": "blank route counts as no route",
+      "platform": "android",
+      "status": 200,
+      "body": {
+        "deeplinkPath": "  ",
+        "androidDeeplinkPath": "",
+        "webOnly": false,
+        "mobileWebOnly": false,
+        "webUrl": "https://www.acme.com",
+        "iosUrl": "https://www.acme.com",
+        "androidUrl": "https://www.acme.com"
+      },
+      "expected": {
+        "action": "web",
+        "url": "https://www.acme.com",
+        "inAppBrowser": true
+      }
+    },
+    {
+      "name": "unknown or expired link",
+      "platform": "android",
+      "status": 404,
+      "body": {
+        "error": "unknown or expired link"
+      },
+      "expected": {
+        "action": "failed",
+        "reason": "unknown_link"
+      }
+    },
+    {
+      "name": "link of another team",
+      "platform": "android",
+      "status": 400,
+      "body": {
+        "error": "not a link of this app"
+      },
+      "expected": {
+        "action": "failed",
+        "reason": "invalid_link"
+      }
+    },
+    {
+      "name": "server error",
+      "platform": "ios",
+      "status": 503,
+      "body": {},
+      "expected": {
+        "action": "failed",
+        "reason": "server_error"
+      }
+    },
+    {
+      "name": "malformed body",
+      "platform": "ios",
+      "status": 200,
+      "body": {
+        "unexpected": true
+      },
+      "expected": {
+        "action": "failed",
+        "reason": "server_error"
+      }
+    },
+    {
+      "name": "route still works when the web URL is malformed",
+      "platform": "ios",
+      "status": 200,
+      "body": {
+        "deeplinkPath": "savings",
+        "webOnly": false,
+        "mobileWebOnly": false,
+        "webUrl": "https://www.acme.com/weekly ad",
+        "iosUrl": "https://www.acme.com/weekly ad",
+        "androidUrl": "https://www.acme.com/weekly ad"
+      },
+      "expected": {
+        "action": "route",
+        "path": "savings"
+      }
+    },
+    {
+      "name": "route still works without any web URL",
+      "platform": "android",
+      "status": 200,
+      "body": {
+        "deeplinkPath": "savings",
+        "webOnly": false,
+        "mobileWebOnly": false
+      },
+      "expected": {
+        "action": "route",
+        "path": "savings"
+      }
+    },
+    {
+      "name": "web URL with a space is percent-encoded",
+      "platform": "android",
+      "status": 200,
+      "body": {
+        "webOnly": false,
+        "mobileWebOnly": true,
+        "webUrl": "https://www.acme.com/weekly ad",
+        "iosUrl": "https://www.acme.com/weekly ad",
+        "androidUrl": "https://www.acme.com/weekly ad"
+      },
+      "expected": {
+        "action": "web",
+        "url": "https://www.acme.com/weekly%20ad",
+        "inAppBrowser": true
+      }
+    },
+    {
+      "name": "non-http web URL is refused",
+      "platform": "android",
+      "status": 200,
+      "body": {
+        "webOnly": true,
+        "mobileWebOnly": false,
+        "webUrl": "javascript:alert(1)",
+        "iosUrl": "javascript:alert(1)",
+        "androidUrl": "intent://evil#Intent;end"
+      },
+      "expected": {
+        "action": "failed",
+        "reason": "server_error"
+      }
+    },
+    {
+      "name": "falls back to webUrl when the platform URL is missing",
+      "platform": "ios",
+      "status": 200,
+      "body": {
+        "webOnly": true,
+        "mobileWebOnly": false,
+        "webUrl": "https://www.acme.com/web"
+      },
+      "expected": {
+        "action": "web",
+        "url": "https://www.acme.com/web",
+        "inAppBrowser": false
+      }
+    },
+    {
+      "name": "webOnly as 1/0 numbers",
+      "platform": "android",
+      "status": 200,
+      "body": {
+        "deeplinkPath": "x",
+        "webOnly": 1,
+        "mobileWebOnly": 0,
+        "webUrl": "https://www.acme.com/web",
+        "iosUrl": "https://www.acme.com/web",
+        "androidUrl": "https://www.acme.com/web"
+      },
+      "expected": {
+        "action": "web",
+        "url": "https://www.acme.com/web",
+        "inAppBrowser": false
+      }
+    }
+  ]
+}
