@@ -256,8 +256,10 @@ struct Click2Client: Sendable {
         case 200..<300 where response.status != 202:
             let json = (try? JSONSerialization.jsonObject(with: response.body)) as? [String: Any]
             return (json?["attributed"] as? Bool) == true ? .attributed : .organic
-        case 202: return .retry
-        case 400..<500: return .organic
+        case 202, 408, 429: return .retry
+        // 400: Apple rejected the token (final); other 4xx may be temporary.
+        case 400: return .organic
+        case 401..<500: return .failed
         default: return .failed
         }
     }

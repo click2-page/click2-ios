@@ -46,6 +46,7 @@ public enum Click2 {
         private var _configured: Configured?
         private var _defaults = UserDefaults(suiteName: Click2.defaultsSuiteName) ?? .standard
         private var installInFlight = false
+        private var asaInFlight = false
         private var _installTask: Task<Void, Never>?
         private var _failFast = true
 
@@ -81,6 +82,22 @@ public enum Click2 {
         }
 
         func setInstallTask(_ task: Task<Void, Never>) { locked { _installTask = task } }
+
+        /** Claims the Apple Search Ads report unless it's done or already running. */
+        func beginAppleSearchAds() -> Bool {
+            locked {
+                guard !asaInFlight, !_defaults.bool(forKey: "asa_reported") else { return false }
+                asaInFlight = true
+                return true
+            }
+        }
+
+        func endAppleSearchAds(reported: Bool) {
+            locked {
+                asaInFlight = false
+                if reported { _defaults.set(true, forKey: "asa_reported") }
+            }
+        }
 
         func endInstall(reported: Bool) {
             locked {
@@ -125,6 +142,8 @@ public enum Click2 {
     /// an earlier app version recorded installs itself (e.g. through Branch).
     public static func markInstallReported() {
         state.defaults.set(true, forKey: installReportedKey)
+        // Their attribution was handled before, Apple Search Ads included.
+        state.defaults.set(true, forKey: asaReportedKey)
     }
 
     /// Whether the URL is a link on one of the configured hosts (and not a service URL).
@@ -196,16 +215,21 @@ public enum Click2 {
     /// install then shows in click2 analytics under channel "apple_search_ads". Later calls do nothing. Nothing is sent
     /// while tracking is off. iOS 14.3+; no ATT prompt needed (AdServices doesn't use the IDFA).
     public static func reportAppleSearchAdsAttribution() {
-        guard let s = configured(), isTrackingEnabled, !state.defaults.bool(forKey: asaReportedKey) else { return }
+        guard let s = configured(), isTrackingEnabled else { return }
         #if canImport(AdServices)
         guard #available(iOS 14.3, macOS 11.1, *) else { return }
-        Task {
+        // Once at a time (calls from onAppear / scene changes overlap), and never again after an answer.
+        guard state.beginAppleSearchAds() else { return }
+        // Detached: the token call is synchronous and shouldn't run on the main actor.
+        Task.detached {
+            var reported = false
+            defer { state.endAppleSearchAds(reported: reported) }
             guard let token = try? AAAttribution.attributionToken() else { return log("no AdServices token") }
             // Apple needs a moment after install before it knows the attribution: a few tries, seconds apart.
             for attempt in 1...3 {
                 switch await s.client.reportAppleSearchAds(token: token, userId: userId, host: s.hosts[0]) {
                 case .attributed, .organic:
-                    state.defaults.set(true, forKey: asaReportedKey)
+                    reported = true
                     return log("Apple Search Ads attribution reported")
                 case .retry where attempt < 3:
                     try? await Task.sleep(nanoseconds: 5_000_000_000)
