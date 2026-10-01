@@ -131,6 +131,67 @@ final class Click2Tests: XCTestCase {
         XCTAssertEqual(notOurs, .notAClick2Link)
     }
 
+    // MARK: In-app events
+
+    private func body(_ request: URLRequest) throws -> [String: Any] {
+        try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
+    }
+
+    func testTrackCreditsTheLinkThatOpenedTheApp() async throws {
+        let transport = configure(get: [.success((200, okBody))], post: [.success((204, Data()))])
+        Click2.userId = "  u-42  "
+        _ = await Click2.resolve(link)
+        let ok = await Click2.track("purchase", revenue: 24.99, currency: "USD", properties: ["sku": "A1", "quantity": 2, "gift": true])
+        XCTAssertTrue(ok)
+        let request = try XCTUnwrap(transport.sent("POST").first)
+        XCTAssertEqual(request.url?.absoluteString, "https://acme.click2.page/api/v1/events")
+        let sent = try body(request)
+        XCTAssertEqual(sent["type"] as? String, "event")
+        XCTAssertEqual(sent["name"] as? String, "purchase")
+        XCTAssertEqual(sent["revenue"] as? Double, 24.99)
+        XCTAssertEqual(sent["currency"] as? String, "USD")
+        XCTAssertEqual(sent["url"] as? String, link.absoluteString)
+        XCTAssertEqual(sent["userId"] as? String, "u-42")
+        XCTAssertEqual(sent["appVersion"] as? String, "7.2.0")
+        let props = try XCTUnwrap(sent["properties"] as? [String: Any])
+        XCTAssertEqual(props["sku"] as? String, "A1")
+        XCTAssertEqual(props["quantity"] as? Double, 2)
+        XCTAssertEqual(props["gift"] as? Bool, true)
+    }
+
+    func testTrackWithoutARecentLinkHasNoAttribution() async throws {
+        let transport = configure(post: [.success((204, Data()))])
+        defaults.set(link.absoluteString, forKey: "last_link_url")
+        defaults.set("acme.click2.page", forKey: "last_link_host")
+        defaults.set(Date().timeIntervalSince1970 - 8 * 86_400, forKey: "last_link_at") // older than 7 days
+        let ok = await Click2.track("sign_up")
+        XCTAssertTrue(ok)
+        let sent = try body(XCTUnwrap(transport.sent("POST").first))
+        XCTAssertNil(sent["url"])
+        XCTAssertNil(sent["userId"])
+    }
+
+    func testTrackSendsNothingWhenTrackingIsOffAndReportsRefusals() async {
+        let transport = configure(post: [.success((400, Data(#"{"error":"bad name"}"#.utf8)))])
+        let refused = await Click2.track("bad name!")
+        XCTAssertFalse(refused)
+        Click2.isTrackingEnabled = false
+        let off = await Click2.track("purchase")
+        XCTAssertFalse(off)
+        XCTAssertEqual(transport.sent("POST").count, 1)
+    }
+
+    func testInstallReportsCarryTheUserId() async throws {
+        let transport = configure(get: [.success((200, okBody))], post: [.success((204, Data()))])
+        Click2.userId = "u-7"
+        _ = await deferred()
+        let sent = try body(XCTUnwrap(transport.sent("POST").first))
+        XCTAssertEqual(sent["type"] as? String, "install")
+        XCTAssertEqual(sent["userId"] as? String, "u-7")
+        Click2.userId = nil
+        XCTAssertNil(Click2.userId)
+    }
+
     // MARK: Retries and timeouts
 
     func testRetriesOnceThenReportsANetworkError() async {

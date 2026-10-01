@@ -232,13 +232,30 @@ struct Click2Client: Sendable {
 
     /// Reports an install. Returns whether the server gave a final answer (2xx or 4xx); on a network
     /// error or 5xx the caller should try again later.
-    func reportInstall(_ clickedURL: URL, host: String) async -> Bool {
+    func reportInstall(_ clickedURL: URL, host: String, userId: String? = nil) async -> Bool {
         guard let url = URL(string: "https://\(host)/api/v1/events") else { return false }
         var payload: [String: String] = ["type": "install", "url": clickedURL.absoluteString, "platform": platform]
         if let appVersion { payload["appVersion"] = String(appVersion.prefix(32)) }
+        if let userId { payload["userId"] = userId }
         let body = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         guard let response = await send(url, method: "POST", body: body, retryable: Self.retryablePOST) else { return false }
         return (200..<300).contains(response.status) || (400..<500).contains(response.status)
+    }
+
+    /// Reports an in-app event; true when click2 accepted it (2xx).
+    func reportEvent(name: String, revenue: Double?, currency: String?, properties: [String: Click2Value], link: URL?, userId: String?, host: String) async -> Bool {
+        guard let url = URL(string: "https://\(host)/api/v1/events") else { return false }
+        var payload: [String: Any] = ["type": "event", "name": name, "platform": platform]
+        if let revenue { payload["revenue"] = revenue }
+        if let currency { payload["currency"] = currency }
+        if !properties.isEmpty { payload["properties"] = properties.mapValues { $0.json } }
+        if let link { payload["url"] = link.absoluteString }
+        if let userId { payload["userId"] = userId }
+        if let appVersion { payload["appVersion"] = String(appVersion.prefix(32)) }
+        guard JSONSerialization.isValidJSONObject(payload), let body = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) else { return false }
+        guard let response = await send(url, method: "POST", body: body, retryable: Self.retryablePOST) else { return false }
+        if !(200..<300).contains(response.status) { log("event \(name) refused: \(response.status) \(String(data: response.body, encoding: .utf8) ?? "")") }
+        return (200..<300).contains(response.status)
     }
 
     private static let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")

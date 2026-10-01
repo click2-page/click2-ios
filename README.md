@@ -87,6 +87,20 @@ if let result = await Click2.handleDeferredLink(text: pastedText) { route(result
 
 Use `handleDeferredLink`, not `handle(_:)`, for pasted links: only it records the install. The install is reported once, in the background (routing doesn't wait for it). It isn't sent while `isTrackingEnabled` is `false`, and if it fails (offline, server error) the next deferred link tries again. If an earlier app version recorded installs itself, call `Click2.markInstallReported()` at launch so upgraded users aren't counted as new installs.
 
+## In-app events and revenue
+
+Record what users do after a link brought them in; the click2 dashboard shows each campaign's events and revenue.
+
+```swift
+Click2.userId = account.id            // optional; sent to the team's integrations (e.g. Braze). nil after sign-out.
+await Click2.track("purchase", revenue: 24.99, currency: "USD", properties: ["sku": "A1", "quantity": 2])
+await Click2.track("sign_up")
+```
+
+An event is credited to the click2 link that last opened the app within `attributionWindow` (default 7 days, in
+`Click2Config`). Names are up to 64 letters, digits, spaces or `_ . : -`; up to 10 properties (text, numbers,
+true/false). Nothing is sent while `isTrackingEnabled` is `false`. `track` returns whether click2 accepted the event.
+
 ## Notes
 
 - Swift 6 ready: builds with strict concurrency checking and no warnings. The API is `async`.
@@ -120,6 +134,8 @@ Use `handleDeferredLink`, not `handle(_:)`, for pasted links: only it records th
 | `~campaign`, `~channel`, `~feature` | `link.campaign`, `link.channel`, `link.feature` |
 | `~referring_link` query merged into the path | already merged by the server |
 | `disableTracking` / `setTrackingDisabled` | `isTrackingEnabled = false` |
+| `BranchEvent(.purchase)…logEvent()` / `userCompletedAction` | `Click2.track("purchase", revenue:currency:properties:)` |
+| `setIdentity` / `logout` | `Click2.userId = id` / `nil` |
 | test key / `*.test-app.link` | test environment host `<team>-test.click2.page` |
 
 ## Development

@@ -25,11 +25,17 @@ public enum Click2 {
     static let defaultsSuiteName = "page.click2.sdk"
     private static let trackingKey = "tracking_enabled"
     private static let installReportedKey = "install_reported"
+    private static let userIdKey = "user_id"
+    private static let lastLinkKey = "last_link_url"
+    private static let lastLinkHostKey = "last_link_host"
+    private static let lastLinkAtKey = "last_link_at"
 
     private struct Configured: Sendable {
         let matcher: LinkMatcher
         let client: Click2Client
         let logging: Bool
+        let hosts: [String]
+        let attributionWindow: TimeInterval
     }
 
     /// Everything mutable, behind one lock. UserDefaults is thread-safe but not Sendable.
@@ -100,7 +106,7 @@ public enum Click2 {
             trackingEnabled: { Click2.isTrackingEnabled },
             log: { message in if logging { print("[Click2] \(message)") } }
         )
-        let configured = Configured(matcher: LinkMatcher(hosts: config.hosts), client: client, logging: logging)
+        let configured = Configured(matcher: LinkMatcher(hosts: config.hosts), client: client, logging: logging, hosts: config.hosts, attributionWindow: config.attributionWindow)
         state.configure(configured, defaults: defaults ?? UserDefaults(suiteName: defaultsSuiteName) ?? .standard)
         log("configured for \(config.hosts)")
     }
@@ -139,7 +145,57 @@ public enum Click2 {
     private static func resolve(_ url: URL, host: String, client: Click2Client) async -> Click2Result {
         let result = await client.resolve(url, host: host)
         log("resolved \(url) -> \(result)")
+        switch result {
+        case .openRoute, .openWeb: remember(url, host: host)
+        default: break
+        }
         return result
+    }
+
+    /// The last link that opened the app, for attributing `track` events.
+    private static func remember(_ url: URL, host: String) {
+        let defaults = state.defaults
+        defaults.set(url.absoluteString, forKey: lastLinkKey)
+        defaults.set(host, forKey: lastLinkHostKey)
+        defaults.set(Date().timeIntervalSince1970, forKey: lastLinkAtKey)
+    }
+
+    // MARK: In-app events
+
+    /// Your own id for the signed-in user (or `nil` after sign-out). Sent with installs and `track` events so the
+    /// team's integrations (e.g. Braze) can match them to the user. Remembered across launches.
+    public static var userId: String? {
+        get { state.defaults.string(forKey: userIdKey) }
+        set {
+            let trimmed = newValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let trimmed, !trimmed.isEmpty { state.defaults.set(String(trimmed.prefix(128)), forKey: userIdKey) }
+            else { state.defaults.removeObject(forKey: userIdKey) }
+        }
+    }
+
+    /// Records an in-app event, e.g. `await Click2.track("purchase", revenue: 24.99, currency: "USD")`.
+    /// Credited to the click2 link that last opened the app (within `attributionWindow`), so the dashboard shows what
+    /// each campaign brought in. Names: up to 64 letters, digits, spaces or `_ . : -`; up to 10 properties.
+    /// Returns whether click2 accepted it. Nothing is sent while tracking is off.
+    @discardableResult
+    public static func track(_ name: String, revenue: Double? = nil, currency: String? = nil, properties: [String: Click2Value] = [:]) async -> Bool {
+        guard let s = configured() else { return false }
+        guard isTrackingEnabled else {
+            log("tracking is off: \(name) not recorded")
+            return false
+        }
+        let defaults = state.defaults
+        var link: URL?
+        var host = s.hosts[0]
+        if let at = defaults.object(forKey: lastLinkAtKey) as? Double, Date().timeIntervalSince1970 - at <= s.attributionWindow,
+           let saved = defaults.string(forKey: lastLinkKey).flatMap(URL.init(string:)),
+           let savedHost = defaults.string(forKey: lastLinkHostKey), s.hosts.contains(savedHost) {
+            link = saved
+            host = savedHost
+        }
+        let ok = await s.client.reportEvent(name: name, revenue: revenue, currency: currency, properties: properties, link: link, userId: userId, host: host)
+        log(ok ? "tracked \(name)" : "track \(name) failed")
+        return ok
     }
 
     /// Resolves the link of a Universal Link activity (`application(_:continue:restorationHandler:)`).
@@ -176,7 +232,7 @@ public enum Click2 {
         guard state.beginInstall() else { return }
         // Not awaited: routing mustn't wait for attribution.
         state.setInstallTask(Task {
-            let reported = await client.reportInstall(url, host: host)
+            let reported = await client.reportInstall(url, host: host, userId: userId)
             state.endInstall(reported: reported)
             log(reported ? "install reported for \(url)" : "install report failed; will retry on the next deferred link")
         })

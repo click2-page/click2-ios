@@ -31,7 +31,7 @@ paths:
         "404": { description: "Unknown or expired link" }
   /api/v1/events:
     post:
-      summary: Report an install (deferred deep link) or open
+      summary: Report an install (deferred deep link), an open, or an in-app event
       parameters:
         - { name: X-Tracking-Disabled, in: header, schema: { type: string, enum: ["1"] } }
       requestBody:
@@ -42,13 +42,22 @@ paths:
               type: object
               required: [type]
               properties:
-                type: { type: string, enum: [install, open] }
-                url: { type: string, format: uri, description: The link that led to the install }
+                type: { type: string, enum: [install, open, event] }
+                url: { type: string, format: uri, description: "The link that led to the install, or (event) the link that last opened the app within the attribution window" }
                 platform: { type: string, enum: [ios, android] }
                 appVersion: { type: string, maxLength: 32 }
+                userId: { type: string, maxLength: 128, description: "The app's own user id, if set (for the team's integrations)" }
+                name: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9_ .:-]{0,63}$", description: "event: its name, e.g. purchase" }
+                revenue: { type: number, minimum: 0, maximum: 1000000000, description: "event: amount in currency units" }
+                currency: { type: string, pattern: "^[A-Z]{3}$", description: "Required with revenue" }
+                properties:
+                  type: object
+                  maxProperties: 10
+                  additionalProperties: { oneOf: [{ type: string, maxLength: 200 }, { type: number }, { type: boolean }] }
       responses:
         "204": { description: Recorded }
         "400": { description: Invalid event }
+        "429": { description: Too many events from this device }
 components:
   schemas:
     ResolvedLink:

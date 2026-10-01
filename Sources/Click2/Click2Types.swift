@@ -13,8 +13,10 @@ public struct Click2Config: Sendable {
     public var timeout: TimeInterval
     /// Prints debug logs (for debug builds).
     public var logging: Bool
+    /// How long the last click2 link that opened the app gets credit for `Click2.track` events.
+    public var attributionWindow: TimeInterval
 
-    public init(hosts: [String], appVersion: String? = nil, timeout: TimeInterval = 10, logging: Bool = false) {
+    public init(hosts: [String], appVersion: String? = nil, timeout: TimeInterval = 10, logging: Bool = false, attributionWindow: TimeInterval = 7 * 86_400) {
         precondition(!hosts.isEmpty, "Click2Config needs at least one link host")
         for host in hosts {
             precondition(
@@ -26,6 +28,7 @@ public struct Click2Config: Sendable {
         self.appVersion = appVersion
         self.timeout = timeout
         self.logging = logging
+        self.attributionWindow = attributionWindow
     }
 
     private static func isHostName(_ host: String) -> Bool {
@@ -55,6 +58,27 @@ public enum Click2FailureReason: String, Sendable, Equatable {
     case serverError = "server_error"
     /// No connection or a timeout.
     case networkError = "network_error"
+}
+
+/// A property value for `Click2.track`: text, a number or true/false. Literals work directly:
+/// `["sku": "A1", "quantity": 2, "gift": true]`.
+public enum Click2Value: Sendable, Equatable, ExpressibleByStringLiteral, ExpressibleByIntegerLiteral, ExpressibleByFloatLiteral, ExpressibleByBooleanLiteral {
+    case string(String)
+    case number(Double)
+    case bool(Bool)
+
+    public init(stringLiteral value: String) { self = .string(value) }
+    public init(integerLiteral value: Int) { self = .number(Double(value)) }
+    public init(floatLiteral value: Double) { self = .number(value) }
+    public init(booleanLiteral value: Bool) { self = .bool(value) }
+
+    var json: Any {
+        switch self {
+        case .string(let s): return s
+        case .number(let n): return n
+        case .bool(let b): return b
+        }
+    }
 }
 
 /// The resolved link, for analytics (campaign, channel, feature) or custom handling.
