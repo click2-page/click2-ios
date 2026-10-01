@@ -161,7 +161,8 @@ enum ResolveMapper {
             campaign: string("campaign"),
             channel: string("channel"),
             feature: string("feature"),
-            linkURL: webURL(json["link"])
+            linkURL: webURL(json["link"]),
+            variant: string("variant")
         )
     }
 
@@ -244,13 +245,14 @@ struct Click2Client: Sendable {
     }
 
     /// Reports an in-app event; true when click2 accepted it (2xx).
-    func reportEvent(name: String, revenue: Double?, currency: String?, properties: [String: Click2Value], link: URL?, userId: String?, host: String) async -> Bool {
+    func reportEvent(name: String, revenue: Double?, currency: String?, properties: [String: Click2Value], link: URL?, variant: String? = nil, userId: String?, host: String) async -> Bool {
         guard let url = URL(string: "https://\(host)/api/v1/events") else { return false }
         var payload: [String: Any] = ["type": "event", "name": name, "platform": platform]
         if let revenue { payload["revenue"] = revenue }
         if let currency { payload["currency"] = currency }
         if !properties.isEmpty { payload["properties"] = properties.mapValues { $0.json } }
         if let link { payload["url"] = link.absoluteString }
+        if let variant { payload["variant"] = variant }
         if let userId { payload["userId"] = userId }
         if let appVersion { payload["appVersion"] = String(appVersion.prefix(32)) }
         guard JSONSerialization.isValidJSONObject(payload), let body = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) else { return false }

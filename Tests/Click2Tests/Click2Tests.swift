@@ -183,7 +183,7 @@ final class Click2Tests: XCTestCase {
     func testEmailClickRemembersTheClick2LinkBehindIt() async throws {
         let emailBody = Data("""
         {"alias":"fall","deeplinkPath":"deals/fall","webOnly":false,"mobileWebOnly":false,"webUrl":"https://www.acme.com",
-         "link":"https://acme.click2.page/fall"}
+         "link":"https://acme.click2.page/fall","variant":"b"}
         """.utf8)
         let transport = FakeTransport(get: [.success((200, emailBody))], post: [.success((204, Data()))])
         Click2.configure(Click2Config(hosts: ["acme.click2.page", "email.acme.com"]), transport: transport, defaults: defaults)
@@ -192,6 +192,7 @@ final class Click2Tests: XCTestCase {
         let request = try XCTUnwrap(transport.sent("POST").first)
         XCTAssertEqual(request.url?.host, "email.acme.com")
         XCTAssertEqual(try body(request)["url"] as? String, "https://acme.click2.page/fall")
+        XCTAssertEqual(try body(request)["variant"] as? String, "b")
     }
 
     func testInstallReportsCarryTheUserId() async throws {

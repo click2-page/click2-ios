@@ -102,4 +102,6 @@ public struct Click2Link: Sendable, Equatable {
     public let feature: String?
     /// The click2 link itself, when it differs from `url` (e.g. `url` is an email click-tracking URL).
     public var linkURL: URL? = nil
+    /// The link rule (`rule:<id>`) or A/B variant that chose the destination, if the link has rules or a split.
+    public var variant: String? = nil
 }
