@@ -100,4 +100,6 @@ public struct Click2Link: Sendable, Equatable {
     public let campaign: String?
     public let channel: String?
     public let feature: String?
+    /// The click2 link itself, when it differs from `url` (e.g. `url` is an email click-tracking URL).
+    public var linkURL: URL? = nil
 }

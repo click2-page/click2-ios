@@ -26,9 +26,8 @@ public enum Click2 {
     private static let trackingKey = "tracking_enabled"
     private static let installReportedKey = "install_reported"
     private static let userIdKey = "user_id"
-    private static let lastLinkKey = "last_link_url"
-    private static let lastLinkHostKey = "last_link_host"
-    private static let lastLinkAtKey = "last_link_at"
+    /// The link that last opened the app: `{"url", "host", "at"}` in one value, so it's never half-written.
+    private static let lastLinkKey = "last_link"
 
     private struct Configured: Sendable {
         let matcher: LinkMatcher
@@ -146,18 +145,31 @@ public enum Click2 {
         let result = await client.resolve(url, host: host)
         log("resolved \(url) -> \(result)")
         switch result {
-        case .openRoute, .openWeb: remember(url, host: host)
+        case .openRoute(_, let link), .openWeb(_, _, let link): remember(link.linkURL ?? url, host: host)
         default: break
         }
         return result
     }
 
-    /// The last link that opened the app, for attributing `track` events.
+    /// The last link that opened the app, for attributing `track` events. For an email click-tracking URL that's the
+    /// click2 link behind it (the server says which); events still go to the host that was opened.
     private static func remember(_ url: URL, host: String) {
-        let defaults = state.defaults
-        defaults.set(url.absoluteString, forKey: lastLinkKey)
-        defaults.set(host, forKey: lastLinkHostKey)
-        defaults.set(Date().timeIntervalSince1970, forKey: lastLinkAtKey)
+        let value: [String: Any] = ["url": url.absoluteString, "host": host, "at": Date().timeIntervalSince1970]
+        if let data = try? JSONSerialization.data(withJSONObject: value), let text = String(data: data, encoding: .utf8) {
+            state.defaults.set(text, forKey: lastLinkKey)
+        }
+    }
+
+    /// The remembered link if it's recent enough (and its host still configured).
+    private static func attributedLink(window: TimeInterval, hosts: [String]) -> (url: URL, host: String)? {
+        guard let text = state.defaults.string(forKey: lastLinkKey), let data = text.data(using: .utf8),
+              let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let url = (value["url"] as? String).flatMap(URL.init(string:)), let host = value["host"] as? String,
+              let at = value["at"] as? Double, hosts.contains(host)
+        else { return nil }
+        let age = Date().timeIntervalSince1970 - at
+        // A negative age means the clock was turned back: don't trust it.
+        return age >= 0 && age <= window ? (url, host) : nil
     }
 
     // MARK: In-app events
@@ -184,15 +196,9 @@ public enum Click2 {
             log("tracking is off: \(name) not recorded")
             return false
         }
-        let defaults = state.defaults
-        var link: URL?
-        var host = s.hosts[0]
-        if let at = defaults.object(forKey: lastLinkAtKey) as? Double, Date().timeIntervalSince1970 - at <= s.attributionWindow,
-           let saved = defaults.string(forKey: lastLinkKey).flatMap(URL.init(string:)),
-           let savedHost = defaults.string(forKey: lastLinkHostKey), s.hosts.contains(savedHost) {
-            link = saved
-            host = savedHost
-        }
+        let attributed = attributedLink(window: s.attributionWindow, hosts: s.hosts)
+        let link = attributed?.url
+        let host = attributed?.host ?? s.hosts[0]
         let ok = await s.client.reportEvent(name: name, revenue: revenue, currency: currency, properties: properties, link: link, userId: userId, host: host)
         log(ok ? "tracked \(name)" : "track \(name) failed")
         return ok

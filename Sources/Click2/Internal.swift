@@ -160,7 +160,8 @@ enum ResolveMapper {
             androidUrl: webURL(json["androidUrl"]) ?? webUrl,
             campaign: string("campaign"),
             channel: string("channel"),
-            feature: string("feature")
+            feature: string("feature"),
+            linkURL: webURL(json["link"])
         )
     }
 

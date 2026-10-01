@@ -161,9 +161,8 @@ final class Click2Tests: XCTestCase {
 
     func testTrackWithoutARecentLinkHasNoAttribution() async throws {
         let transport = configure(post: [.success((204, Data()))])
-        defaults.set(link.absoluteString, forKey: "last_link_url")
-        defaults.set("acme.click2.page", forKey: "last_link_host")
-        defaults.set(Date().timeIntervalSince1970 - 8 * 86_400, forKey: "last_link_at") // older than 7 days
+        let old = #"{"url":"\#(link.absoluteString)","host":"acme.click2.page","at":\#(Date().timeIntervalSince1970 - 8 * 86_400)}"#
+        defaults.set(old, forKey: "last_link") // older than 7 days
         let ok = await Click2.track("sign_up")
         XCTAssertTrue(ok)
         let sent = try body(XCTUnwrap(transport.sent("POST").first))
@@ -179,6 +178,20 @@ final class Click2Tests: XCTestCase {
         let off = await Click2.track("purchase")
         XCTAssertFalse(off)
         XCTAssertEqual(transport.sent("POST").count, 1)
+    }
+
+    func testEmailClickRemembersTheClick2LinkBehindIt() async throws {
+        let emailBody = Data("""
+        {"alias":"fall","deeplinkPath":"deals/fall","webOnly":false,"mobileWebOnly":false,"webUrl":"https://www.acme.com",
+         "link":"https://acme.click2.page/fall"}
+        """.utf8)
+        let transport = FakeTransport(get: [.success((200, emailBody))], post: [.success((204, Data()))])
+        Click2.configure(Click2Config(hosts: ["acme.click2.page", "email.acme.com"]), transport: transport, defaults: defaults)
+        _ = await Click2.resolve(URL(string: "https://email.acme.com/ls/click?upn=1")!)
+        _ = await Click2.track("purchase")
+        let request = try XCTUnwrap(transport.sent("POST").first)
+        XCTAssertEqual(request.url?.host, "email.acme.com")
+        XCTAssertEqual(try body(request)["url"] as? String, "https://acme.click2.page/fall")
     }
 
     func testInstallReportsCarryTheUserId() async throws {
