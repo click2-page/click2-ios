@@ -101,6 +101,16 @@ An event is credited to the click2 link that last opened the app within `attribu
 `Click2Config`). Names are up to 64 letters, digits, spaces or `_ . : -`; up to 10 properties (text, numbers,
 true/false). Nothing is sent while `isTrackingEnabled` is `false`. `track` returns whether click2 accepted the event.
 
+## Apple Search Ads
+
+```swift
+Click2.reportAppleSearchAdsAttribution()   // once at launch, after configure
+```
+
+On the first launch after an install, sends the AdServices attribution token; click2 asks Apple which campaign led to
+the install and shows it in analytics (channel `apple_search_ads`, campaign `asa-<campaign id>`). No ATT prompt
+(AdServices doesn't use the IDFA). Nothing is sent while tracking is off.
+
 ## Notes
 
 - Swift 6 ready: builds with strict concurrency checking and no warnings. The API is `async`.

@@ -4,6 +4,8 @@ All notable changes to the click2 iOS SDK. The format follows [Keep a Changelog]
 
 ## [Unreleased]
 
+- `Click2.reportAppleSearchAdsAttribution()`: Apple Search Ads install attribution through AdServices.
+
 - In-app events and revenue: `Click2.track(_:revenue:currency:properties:)`, credited to the link that last opened
   the app within `Click2Config.attributionWindow` (default 7 days). `Click2Value` for property literals.
 - `Click2.userId`: your user id, sent with installs and events for the team's integrations.

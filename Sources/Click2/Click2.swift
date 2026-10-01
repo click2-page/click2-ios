@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(AdServices)
+import AdServices
+#endif
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -184,6 +187,34 @@ public enum Click2 {
             if let trimmed, !trimmed.isEmpty { state.defaults.set(String(trimmed.prefix(128)), forKey: userIdKey) }
             else { state.defaults.removeObject(forKey: userIdKey) }
         }
+    }
+
+    private static let asaReportedKey = "asa_reported"
+
+    /// Apple Search Ads attribution: call once at launch (e.g. after `configure`). On the first launch after an install
+    /// it sends the AdServices attribution token to click2, which asks Apple which campaign led to the install; the
+    /// install then shows in click2 analytics under channel "apple_search_ads". Later calls do nothing. Nothing is sent
+    /// while tracking is off. iOS 14.3+; no ATT prompt needed (AdServices doesn't use the IDFA).
+    public static func reportAppleSearchAdsAttribution() {
+        guard let s = configured(), isTrackingEnabled, !state.defaults.bool(forKey: asaReportedKey) else { return }
+        #if canImport(AdServices)
+        guard #available(iOS 14.3, macOS 11.1, *) else { return }
+        Task {
+            guard let token = try? AAAttribution.attributionToken() else { return log("no AdServices token") }
+            // Apple needs a moment after install before it knows the attribution: a few tries, seconds apart.
+            for attempt in 1...3 {
+                switch await s.client.reportAppleSearchAds(token: token, userId: userId, host: s.hosts[0]) {
+                case .attributed, .organic:
+                    state.defaults.set(true, forKey: asaReportedKey)
+                    return log("Apple Search Ads attribution reported")
+                case .retry where attempt < 3:
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                default:
+                    return log("Apple Search Ads attribution not available yet; will retry next launch")
+                }
+            }
+        }
+        #endif
     }
 
     /// Records an in-app event, e.g. `await Click2.track("purchase", revenue: 24.99, currency: "USD")`.

@@ -244,6 +244,24 @@ struct Click2Client: Sendable {
         return (200..<300).contains(response.status) || (400..<500).contains(response.status)
     }
 
+    /// Sends an AdServices token; .attributed/.organic are final, .retry means "ask again in a few seconds".
+    func reportAppleSearchAds(token: String, userId: String?, host: String) async -> AppleSearchAdsAnswer {
+        guard let url = URL(string: "https://\(host)/api/v1/attribution/apple-search-ads") else { return .failed }
+        var payload: [String: String] = ["token": token, "platform": platform]
+        if let appVersion { payload["appVersion"] = String(appVersion.prefix(32)) }
+        if let userId { payload["userId"] = userId }
+        let body = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        guard let response = await send(url, method: "POST", body: body, retryable: Self.retryablePOST) else { return .failed }
+        switch response.status {
+        case 200..<300 where response.status != 202:
+            let json = (try? JSONSerialization.jsonObject(with: response.body)) as? [String: Any]
+            return (json?["attributed"] as? Bool) == true ? .attributed : .organic
+        case 202: return .retry
+        case 400..<500: return .organic
+        default: return .failed
+        }
+    }
+
     /// Reports an in-app event; true when click2 accepted it (2xx).
     func reportEvent(name: String, revenue: Double?, currency: String?, properties: [String: Click2Value], link: URL?, variant: String? = nil, userId: String?, host: String) async -> Bool {
         guard let url = URL(string: "https://\(host)/api/v1/events") else { return false }
@@ -312,3 +330,5 @@ struct Click2Client: Sendable {
         return nil
     }
 }
+
+enum AppleSearchAdsAnswer: Equatable { case attributed, organic, retry, failed }

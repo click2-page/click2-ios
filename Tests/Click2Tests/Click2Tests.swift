@@ -206,6 +206,18 @@ final class Click2Tests: XCTestCase {
         XCTAssertNil(Click2.userId)
     }
 
+    func testAppleSearchAdsAnswers() async throws {
+        let transport = FakeTransport(post: [.success((200, Data(#"{"attributed":true}"#.utf8))), .success((202, Data())), .success((200, Data(#"{"attributed":false}"#.utf8)))])
+        let client = Click2Client(transport: transport, platform: "ios", appVersion: "7.2.0", sdkVersion: "test", timeout: 5, trackingEnabled: { true }, log: { _ in })
+        let first = await client.reportAppleSearchAds(token: "tok", userId: nil, host: "acme.click2.page")
+        let second = await client.reportAppleSearchAds(token: "tok", userId: nil, host: "acme.click2.page")
+        let third = await client.reportAppleSearchAds(token: "tok", userId: nil, host: "acme.click2.page")
+        XCTAssertEqual([first, second, third], [.attributed, .retry, .organic])
+        let request = try XCTUnwrap(transport.sent("POST").first)
+        XCTAssertEqual(request.url?.absoluteString, "https://acme.click2.page/api/v1/attribution/apple-search-ads")
+        XCTAssertEqual(try body(request)["token"] as? String, "tok")
+    }
+
     // MARK: Retries and timeouts
 
     func testRetriesOnceThenReportsANetworkError() async {
