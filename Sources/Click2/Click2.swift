@@ -22,7 +22,7 @@ import UIKit
 /// Task { if let result = await Click2.handleDeferredLink(pastedURL) { route(result) } }
 /// ```
 public enum Click2 {
-    public static let sdkVersion = "0.2.0"
+    public static let sdkVersion = "0.3.0"
 
     private static let platform = "ios"
     static let defaultsSuiteName = "page.click2.sdk"

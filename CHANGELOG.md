@@ -4,8 +4,11 @@ All notable changes to the click2 iOS SDK. The format follows [Keep a Changelog]
 
 ## [Unreleased]
 
-- `Click2.reportAppleSearchAdsAttribution()`: Apple Search Ads install attribution through AdServices.
+## [0.3.0] - 2026-10-01
 
+- `Click2.reportAppleSearchAdsAttribution()`: Apple Search Ads install attribution through AdServices.
+- `Click2Link.linkURL` (the click2 link behind an email click-tracking URL) and `Click2Link.variant` (the link rule or
+  A/B variant), remembered for event attribution.
 - In-app events and revenue: `Click2.track(_:revenue:currency:properties:)`, credited to the link that last opened
   the app within `Click2Config.attributionWindow` (default 7 days). `Click2Value` for property literals.
 - `Click2.userId`: your user id, sent with installs and events for the team's integrations.
@@ -19,5 +22,6 @@ First public release.
 - Install and open attribution, with a tracking switch (`isTrackingEnabled`) for consent.
 - Only the configured link hosts are ever contacted.
 
-[Unreleased]: https://github.com/click2-page/click2-ios/compare/0.2.0...HEAD
+[Unreleased]: https://github.com/click2-page/click2-ios/compare/0.3.0...HEAD
+[0.3.0]: https://github.com/click2-page/click2-ios/releases/tag/0.3.0
 [0.2.0]: https://github.com/click2-page/click2-ios/releases/tag/0.2.0
