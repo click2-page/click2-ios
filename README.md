@@ -14,7 +14,7 @@ The Android SDK is at [click2-page/click2-android](https://github.com/click2-pag
 **Swift Package Manager.** In Xcode: File → Add Package Dependencies → `https://github.com/click2-page/click2-ios`, then link the product **Click2**. Or in `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/click2-page/click2-ios", from: "0.3.1")
+.package(url: "https://github.com/click2-page/click2-ios", from: "0.3.2")
 ```
 
 Requirements: iOS 14+, Xcode 15+ (Swift 5.9). Swift 6 language mode is supported.
