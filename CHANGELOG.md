@@ -4,6 +4,24 @@ All notable changes to the click2 iOS SDK. The format follows [Keep a Changelog]
 
 ## [Unreleased]
 
+### Fixed
+
+- An attributed Apple Search Ads answer also marks the install as reported, so a link pasted later doesn't report a
+  second install. Reconfiguring no longer clears the in-flight install guard while a report may still be running.
+- Install reports answered with HTTP 408 or 429 are retried with the next deferred link instead of being treated as
+  final.
+- A resolve is no longer repeated after `.networkConnectionLost` (the first request may have counted the open); only
+  failures that guarantee nothing was sent are retried, like the Android SDK.
+- `Click2Config.hosts` is stored normalized (trimmed, lowercased, trailing dot removed, duplicates dropped) and that
+  list is used everywhere, so `track()` attribution works when hosts were configured with capitals or a trailing dot.
+- Link matching decodes the whole path before splitting it, like the Android SDK: `/api%2Fx` is a service path, not a
+  link (new shared fixture case; also `campaign-referrer.json`, used by the Android and React Native SDKs).
+
+### Documentation
+
+- `hosts[0]` must be a link host, not an email click-tracking domain: Apple Search Ads tokens and events without a
+  recent link go there.
+
 ## [0.3.0] - 2026-10-01
 
 - `Click2.reportAppleSearchAdsAttribution()`: Apple Search Ads install attribution through AdServices.

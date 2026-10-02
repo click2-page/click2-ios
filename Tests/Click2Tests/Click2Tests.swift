@@ -223,9 +223,11 @@ final class Click2Tests: XCTestCase {
     // MARK: Retries and timeouts
 
     func testRetriesOnceThenReportsANetworkError() async {
-        let retried = configure(get: [.failure(URLError(.networkConnectionLost)), .success((200, okBody))])
-        if case .openRoute = await Click2.resolve(link) {} else { XCTFail("expected a route after retry") }
-        XCTAssertEqual(retried.sent.count, 2)
+        // The request may have arrived (and counted the open): not repeated.
+        let lost = configure(get: [.failure(URLError(.networkConnectionLost)), .success((200, okBody))])
+        let lostResult = await Click2.resolve(link)
+        XCTAssertEqual(lostResult, .failed(reason: .networkError, url: link))
+        XCTAssertEqual(lost.sent.count, 1)
 
         let unreachable = configure(get: [.failure(URLError(.cannotConnectToHost)), .success((200, okBody))])
         if case .openRoute = await Click2.resolve(link) {} else { XCTFail("expected a route after retry") }
@@ -332,6 +334,61 @@ final class Click2Tests: XCTestCase {
         _ = await deferred()   // done
         XCTAssertEqual(transport.sent("POST").count, 4)
         XCTAssertTrue(defaults.bool(forKey: "install_reported"))
+    }
+
+    func testInstallIsRetriedAfter429And408() async {
+        let transport = configure(
+            get: [.success((200, okBody)), .success((200, okBody)), .success((200, okBody)), .success((200, okBody))],
+            post: [.success((429, Data())), .success((408, Data())), .success((204, Data()))]
+        )
+        _ = await deferred()   // 429
+        XCTAssertFalse(defaults.bool(forKey: "install_reported"))
+        _ = await deferred()   // 408
+        XCTAssertFalse(defaults.bool(forKey: "install_reported"))
+        _ = await deferred()   // 204
+        _ = await deferred()   // done
+        XCTAssertEqual(transport.sent("POST").count, 3)
+        XCTAssertTrue(defaults.bool(forKey: "install_reported"))
+    }
+
+    func testReconfiguringDoesNotStartASecondInstallReport() async {
+        let transport = configure(get: [.success((200, okBody)), .success((200, okBody))], post: [.success((204, Data())), .success((204, Data()))], postDelay: 0.3)
+        _ = await Click2.handleDeferredLink(link)
+        Click2.configure(Click2Config(hosts: ["acme.click2.page"]), transport: transport, defaults: defaults)
+        _ = await Click2.handleDeferredLink(link)
+        await Click2.installTaskForTesting?.value
+        XCTAssertEqual(transport.sent("POST").count, 1)
+    }
+
+    func testAttributedAppleSearchAdsCountsAsTheInstall() async throws {
+        let transport = configure(get: [.success((200, okBody))], post: [.success((200, Data(#"{"attributed":true}"#.utf8))), .success((204, Data()))])
+        await Click2.reportAppleSearchAdsForTesting(token: "tok")
+        XCTAssertTrue(defaults.bool(forKey: "install_reported"))
+        _ = await deferred()
+        XCTAssertEqual(transport.sent("POST").map { $0.url!.path }, ["/api/v1/attribution/apple-search-ads"], "no second install for a pasted link")
+        await Click2.reportAppleSearchAdsForTesting(token: "tok")
+        XCTAssertEqual(transport.sent("POST").count, 1, "answered once")
+    }
+
+    func testOrganicAppleSearchAdsStillReportsAPastedLinkInstall() async throws {
+        let transport = configure(get: [.success((200, okBody))], post: [.success((202, Data())), .success((200, Data(#"{"attributed":false}"#.utf8))), .success((204, Data()))])
+        await Click2.reportAppleSearchAdsForTesting(token: "tok")
+        XCTAssertFalse(defaults.bool(forKey: "install_reported"))
+        XCTAssertTrue(defaults.bool(forKey: "asa_reported"))
+        _ = await deferred()
+        XCTAssertEqual(try body(XCTUnwrap(transport.sent("POST").last))["type"] as? String, "install")
+    }
+
+    func testHostsAreNormalizedOnce() async throws {
+        let config = Click2Config(hosts: [" Acme.Click2.Page. ", "acme.click2.page", "email.acme.com\n"])
+        XCTAssertEqual(config.hosts, ["acme.click2.page", "email.acme.com"])
+        let transport = FakeTransport(get: [.success((200, okBody))], post: [.success((204, Data()))])
+        Click2.configure(config, transport: transport, defaults: defaults)
+        _ = await Click2.resolve(URL(string: "https://ACME.click2.page./subs")!)
+        _ = await Click2.track("purchase")
+        let request = try XCTUnwrap(transport.sent("POST").first)
+        XCTAssertEqual(request.url?.host, "acme.click2.page")
+        XCTAssertEqual(try body(request)["url"] as? String, "https://ACME.click2.page./subs", "credited to the link that opened the app")
     }
 
     func testInstallRejectedByTheServerIsNotRetried() async {

@@ -13,6 +13,34 @@ enum LenientURL {
     private static let allowed = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~!$&'()*+,;=:@/?".utf8)
     private static let hexDigits = Array("0123456789ABCDEF".utf8)
 
+    /// Decodes `%XX` escapes as UTF-8 and never fails: invalid escapes stay as they are, invalid UTF-8 becomes U+FFFD
+    /// (like the Android SDK; `removingPercentEncoding` returns `nil` for the whole string instead).
+    static func percentDecoded(_ string: String) -> String {
+        guard string.contains("%") else { return string }
+        func hex(_ b: UInt8) -> UInt8? {
+            switch b {
+            case UInt8(ascii: "0")...UInt8(ascii: "9"): return b - UInt8(ascii: "0")
+            case UInt8(ascii: "a")...UInt8(ascii: "f"): return b - UInt8(ascii: "a") + 10
+            case UInt8(ascii: "A")...UInt8(ascii: "F"): return b - UInt8(ascii: "A") + 10
+            default: return nil
+            }
+        }
+        let bytes = Array(string.utf8)
+        var out: [UInt8] = []
+        out.reserveCapacity(bytes.count)
+        var i = 0
+        while i < bytes.count {
+            if bytes[i] == UInt8(ascii: "%"), i + 2 < bytes.count, let high = hex(bytes[i + 1]), let low = hex(bytes[i + 2]) {
+                out.append(high << 4 | low)
+                i += 3
+            } else {
+                out.append(bytes[i])
+                i += 1
+            }
+        }
+        return String(decoding: out, as: UTF8.self)
+    }
+
     static func encodeInvalidCharacters(_ string: String) -> String {
         let bytes = Array(string.utf8)
         // "[" and "]" are only valid in the authority (IPv6 hosts).
@@ -49,7 +77,7 @@ struct LinkMatcher: Sendable {
     private static let servicePaths: Set<String> = ["api", "hooks", ".well-known", "robots.txt", "favicon.ico", "apple-app-site-association"]
 
     init(hosts: [String]) {
-        self.hosts = Set(hosts.map { Self.normalize($0.trimmingCharacters(in: .whitespaces)) })
+        self.hosts = Set(hosts.map(Click2Config.normalizeHost))
     }
 
     func matches(_ url: URL) -> Bool {
@@ -62,26 +90,20 @@ struct LinkMatcher: Sendable {
               c.scheme?.lowercased() == "https",
               c.percentEncodedUser == nil, c.percentEncodedPassword == nil,
               c.port == nil || c.port == 443,
-              let host = c.percentEncodedHost.map(Self.normalize), hosts.contains(host)
+              let host = c.percentEncodedHost.map(Click2Config.normalizeHost), hosts.contains(host)
         else { return nil }
 
-        let path = c.percentEncodedPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        // Decoded before splitting (like the Android SDK): an encoded slash (`/api%2Fx`) ends the first segment too.
+        let path = LenientURL.percentDecoded(c.percentEncodedPath).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard !path.isEmpty else { return nil }
         let segments = path.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
         let first = String(segments[0])
-        let decoded = first.removingPercentEncoding ?? first
-        guard !Self.servicePaths.contains(decoded.lowercased()) else { return nil }
+        guard !Self.servicePaths.contains(first.lowercased()) else { return nil }
         // /p/<route> passthrough needs a route.
-        if decoded == "p" && (segments.count < 2 || segments[1].trimmingCharacters(in: CharacterSet(charactersIn: "/")).isEmpty) {
+        if first == "p" && (segments.count < 2 || segments[1].trimmingCharacters(in: CharacterSet(charactersIn: "/")).isEmpty) {
             return nil
         }
         return host
-    }
-
-    private static func normalize(_ host: String) -> String {
-        var h = host.lowercased()
-        while h.hasSuffix(".") { h.removeLast() }
-        return h
     }
 }
 
@@ -210,10 +232,9 @@ struct Click2Client: Sendable {
     let trackingEnabled: @Sendable () -> Bool
     let log: @Sendable (String) -> Void
 
-    /// Connection failures after which a GET can safely be repeated.
-    private static let retryableGET: Set<URLError.Code> = [.notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed, .networkConnectionLost]
-    /// Failures that guarantee a POST never reached the server.
-    private static let retryablePOST: Set<URLError.Code> = [.notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed]
+    /// Failures that guarantee the request never reached the server, so repeating it can't count anything twice.
+    /// Not `.networkConnectionLost`: the server may already have recorded the open or the install.
+    private static let neverSent: Set<URLError.Code> = [.notConnectedToInternet, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed]
 
     func resolve(_ clickedURL: URL, host: String) async -> Click2Result {
         var components = URLComponents()
@@ -226,22 +247,27 @@ struct Click2Client: Sendable {
         components.percentEncodedQuery = items.map { "\($0.0)=\(Self.encode($0.1))" }.joined(separator: "&")
         guard let url = components.url else { return .failed(reason: .invalidLink, url: clickedURL) }
 
-        guard let response = await send(url, method: "GET", body: nil, retryable: Self.retryableGET) else {
+        guard let response = await send(url, method: "GET", body: nil) else {
             return .failed(reason: .networkError, url: clickedURL)
         }
         return ResolveMapper.map(clickedURL: clickedURL, platform: platform, status: response.status, body: response.body)
     }
 
-    /// Reports an install. Returns whether the server gave a final answer (2xx or 4xx); on a network
-    /// error or 5xx the caller should try again later.
+    /// Reports an install. Returns whether the server gave a final answer (2xx, or 4xx other than 408 and 429);
+    /// on a network error, 5xx, 408 or 429 the caller should try again later.
     func reportInstall(_ clickedURL: URL, host: String, userId: String? = nil) async -> Bool {
         guard let url = URL(string: "https://\(host)/api/v1/events") else { return false }
         var payload: [String: String] = ["type": "install", "url": clickedURL.absoluteString, "platform": platform]
         if let appVersion { payload["appVersion"] = String(appVersion.prefix(32)) }
         if let userId { payload["userId"] = userId }
         let body = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
-        guard let response = await send(url, method: "POST", body: body, retryable: Self.retryablePOST) else { return false }
-        return (200..<300).contains(response.status) || (400..<500).contains(response.status)
+        guard let response = await send(url, method: "POST", body: body) else { return false }
+        return Self.isFinal(response.status)
+    }
+
+    /// A final answer to an install report: 2xx, or a 4xx other than 408 (timeout) and 429 (rate limited).
+    static func isFinal(_ status: Int) -> Bool {
+        (200..<300).contains(status) || ((400..<500).contains(status) && status != 408 && status != 429)
     }
 
     /// Sends an AdServices token; .attributed/.organic are final, .retry means "ask again in a few seconds".
@@ -251,7 +277,7 @@ struct Click2Client: Sendable {
         if let appVersion { payload["appVersion"] = String(appVersion.prefix(32)) }
         if let userId { payload["userId"] = userId }
         let body = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
-        guard let response = await send(url, method: "POST", body: body, retryable: Self.retryablePOST) else { return .failed }
+        guard let response = await send(url, method: "POST", body: body) else { return .failed }
         switch response.status {
         case 200..<300 where response.status != 202:
             let json = (try? JSONSerialization.jsonObject(with: response.body)) as? [String: Any]
@@ -276,7 +302,7 @@ struct Click2Client: Sendable {
         if let userId { payload["userId"] = userId }
         if let appVersion { payload["appVersion"] = String(appVersion.prefix(32)) }
         guard JSONSerialization.isValidJSONObject(payload), let body = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) else { return false }
-        guard let response = await send(url, method: "POST", body: body, retryable: Self.retryablePOST) else { return false }
+        guard let response = await send(url, method: "POST", body: body) else { return false }
         if !(200..<300).contains(response.status) { log("event \(name) refused: \(response.status) \(String(data: response.body, encoding: .utf8) ?? "")") }
         return (200..<300).contains(response.status)
     }
@@ -287,8 +313,8 @@ struct Click2Client: Sendable {
         value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? value
     }
 
-    /// Sends within `timeout` in total, retrying once only on the given connection failures,
-    /// never after a timeout or cancellation.
+    /// Sends within `timeout` in total, retrying once only when the request never reached the server,
+    /// never after a timeout, a lost connection or cancellation.
     /**
      * URLRequest.timeoutInterval only fires when the connection goes idle, so a slow-but-active
      * response could run past the budget. Race the request against the remaining time; the loser
@@ -308,7 +334,7 @@ struct Click2Client: Sendable {
         }
     }
 
-    private func send(_ url: URL, method: String, body: Data?, retryable: Set<URLError.Code>) async -> (status: Int, body: Data)? {
+    private func send(_ url: URL, method: String, body: Data?) async -> (status: Int, body: Data)? {
         let deadline = ProcessInfo.processInfo.systemUptime + timeout
         for attempt in 1...2 {
             let remaining = deadline - ProcessInfo.processInfo.systemUptime
@@ -326,7 +352,7 @@ struct Click2Client: Sendable {
                 return try await sendWithin(remaining, req)
             } catch {
                 log("\(method) \(url.path) failed (attempt \(attempt)): \(error)")
-                guard !Task.isCancelled, let code = (error as? URLError)?.code, retryable.contains(code) else { return nil }
+                guard !Task.isCancelled, let code = (error as? URLError)?.code, Self.neverSent.contains(code) else { return nil }
             }
         }
         return nil

@@ -4,7 +4,10 @@ import Foundation
 public struct Click2Config: Sendable {
     /// The team's link hosts this app handles, e.g. `["acme.click2.page"]` for the App Store build
     /// and `["acme-test.click2.page"]` for staging. Only links on these hosts are handled, and
-    /// only these hosts are ever called.
+    /// only these hosts are ever called. Stored normalized: trimmed, lowercased, without a trailing dot.
+    ///
+    /// The first host is used for calls that have no link of their own (Apple Search Ads attribution, events without
+    /// a recent link), so it must be a link host like `acme.click2.page`, not an email click-tracking domain.
     public var hosts: [String]
     /// Reported with opens and installs, e.g. `CFBundleShortVersionString`.
     public var appVersion: String?
@@ -20,15 +23,28 @@ public struct Click2Config: Sendable {
         precondition(!hosts.isEmpty, "Click2Config needs at least one link host")
         for host in hosts {
             precondition(
-                Self.isHostName(host.trimmingCharacters(in: .whitespaces)),
+                Self.isHostName(Self.normalizeHost(host)),
                 "Click2Config hosts are bare host names like acme.click2.page (no scheme, port, path or user), got \"\(host)\""
             )
         }
-        self.hosts = hosts
+        self.hosts = Self.normalizeHosts(hosts)
         self.appVersion = appVersion
         self.timeout = timeout
         self.logging = logging
         self.attributionWindow = attributionWindow
+    }
+
+    /// Trimmed, lowercased, without trailing dots: how hosts are stored and compared.
+    static func normalizeHost(_ host: String) -> String {
+        var h = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        while h.hasSuffix(".") { h.removeLast() }
+        return h
+    }
+
+    /// Normalized, duplicates removed, order kept.
+    static func normalizeHosts(_ hosts: [String]) -> [String] {
+        var seen = Set<String>()
+        return hosts.map(normalizeHost).filter { seen.insert($0).inserted }
     }
 
     private static func isHostName(_ host: String) -> Bool {

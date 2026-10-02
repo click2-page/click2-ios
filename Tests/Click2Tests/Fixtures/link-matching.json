@@ -129,6 +129,11 @@
       "why": "percent-encoded service path"
     },
     {
+      "url": "https://acme.click2.page/api%2Fx",
+      "expected": false,
+      "why": "the path is decoded before it is split: an encoded slash still ends the first segment (here a service path)"
+    },
+    {
       "url": "https://acme.click2.page/p",
       "expected": false,
       "why": "passthrough without a path"

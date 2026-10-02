@@ -1,0 +1,20 @@
+{
+  "description": "Android: whether a Play install referrer without a click2 link is reported as a campaign install (its UTM tags / Google Ads click ids). Organic Play installs (utm_source=google-play, utm_medium=organic, or google-play with no other campaign keys) and click2 referrers whose link isn't on the configured hosts are not reported. Keys are matched case-insensitively and need a value; a referrer still URL-encoded once is decoded first.",
+  "cases": [
+    { "referrer": "utm_source=google-play&utm_medium=organic", "report": false, "why": "organic Play install" },
+    { "referrer": "utm_source=Google-Play&utm_medium=Organic", "report": false, "why": "organic, any case" },
+    { "referrer": "utm_source=google-play", "report": false, "why": "no campaign keys beyond the Play Store's own" },
+    { "referrer": "utm_source=google-play&utm_medium=cpc&utm_campaign=fall", "report": true },
+    { "referrer": "utm_source=tiktok&utm_medium=paid", "report": true },
+    { "referrer": "utm_campaign=fall", "report": true },
+    { "referrer": "gclid=Cj0KCQ", "report": true, "why": "Google Ads click id without UTM tags" },
+    { "referrer": "gbraid=0AAAA", "report": true },
+    { "referrer": "wbraid=0AAAB", "report": true },
+    { "referrer": "gclid=", "report": false, "why": "empty value" },
+    { "referrer": "utm_source%3Dfacebook%26utm_campaign%3Dfall", "report": true, "why": "referrer still URL-encoded once" },
+    { "referrer": "utm_source=smartlink&smartlink=https%3A%2F%2Fglobex.click2.page%2Fx", "report": false, "why": "a click2 link for another host" },
+    { "referrer": "utm_source=smartlink", "report": false, "why": "a click2 referrer without a usable link" },
+    { "referrer": "foo=bar&notutm_source=x", "report": false },
+    { "referrer": "", "report": false }
+  ]
+}

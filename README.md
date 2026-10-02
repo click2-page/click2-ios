@@ -109,14 +109,16 @@ Click2.reportAppleSearchAdsAttribution()   // once at launch, after configure
 
 On the first launch after an install, sends the AdServices attribution token; click2 asks Apple which campaign led to
 the install and shows it in analytics (channel `apple_search_ads`, campaign `asa-<campaign id>`). No ATT prompt
-(AdServices doesn't use the IDFA). Nothing is sent while tracking is off.
+(AdServices doesn't use the IDFA). Nothing is sent while tracking is off. The token goes to the first configured host,
+so `hosts[0]` must be a link host (`acme.click2.page`), not an email click-tracking domain. An attributed install
+counts as the device's install: a link pasted later doesn't report another one.
 
 ## Notes
 
 - Swift 6 ready: builds with strict concurrency checking and no warnings. The API is `async`.
-- Uses `URLSession.shared`. `timeout` (default 10 s) is the total budget per call. A request is retried once only when the connection couldn't be made (no timeouts, cancellation, or anything that may have reached the server).
+- Uses `URLSession.shared`. `timeout` (default 10 s) is the total budget per call. A request is retried once only when the connection couldn't be made (no timeouts, lost connections, cancellation, or anything that may have reached the server), so an open is never counted twice. An install report answered with 5xx, 408 or 429 (or not answered) is sent again with the next deferred link.
 - `Click2Link.webUrl`, `iosUrl` and `androidUrl` are optional (0.x API change): they are `nil` when the server sent no http(s) URL. A link with an in-app route still routes; a link that needs a web URL but has none fails with `.serverError`.
-- Only the configured hosts are ever called.
+- Only the configured hosts are ever called. They are stored normalized (trimmed, lowercased, no trailing dot).
 - `swift test` runs the tests, including the shared fixtures, on macOS; `xcodebuild test -scheme Click2 -destination 'platform=iOS Simulator,…'` runs them on iOS.
 - **Existing installs.** If an earlier version of your app handled deferred links itself, call `Click2.markInstallReported()` at launch for users who already went through it, so they aren't reported as new installs.
 

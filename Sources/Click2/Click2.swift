@@ -26,6 +26,7 @@ public enum Click2 {
 
     private static let platform = "ios"
     static let defaultsSuiteName = "page.click2.sdk"
+    private static let asaReportedKey = "asa_reported"
     private static let trackingKey = "tracking_enabled"
     private static let installReportedKey = "install_reported"
     private static let userIdKey = "user_id"
@@ -63,12 +64,12 @@ public enum Click2 {
             set { locked { _failFast = newValue } }
         }
 
+        /// Leaves the in-flight flags alone: a report started under the previous configuration may still be running,
+        /// and clearing them would let a second one start.
         func configure(_ configured: Configured?, defaults: UserDefaults) {
             locked {
                 _configured = configured
                 _defaults = defaults
-                installInFlight = false
-                _installTask = nil
             }
         }
 
@@ -86,16 +87,19 @@ public enum Click2 {
         /** Claims the Apple Search Ads report unless it's done or already running. */
         func beginAppleSearchAds() -> Bool {
             locked {
-                guard !asaInFlight, !_defaults.bool(forKey: "asa_reported") else { return false }
+                guard !asaInFlight, !_defaults.bool(forKey: Click2.asaReportedKey) else { return false }
                 asaInFlight = true
                 return true
             }
         }
 
-        func endAppleSearchAds(reported: Bool) {
+        /// An attributed answer is this install's attribution: also marks the install as reported, so a link pasted
+        /// later doesn't report a second one.
+        func endAppleSearchAds(reported: Bool, attributed: Bool) {
             locked {
                 asaInFlight = false
-                if reported { _defaults.set(true, forKey: "asa_reported") }
+                if reported { _defaults.set(true, forKey: Click2.asaReportedKey) }
+                if attributed { _defaults.set(true, forKey: Click2.installReportedKey) }
             }
         }
 
@@ -125,9 +129,11 @@ public enum Click2 {
             trackingEnabled: { Click2.isTrackingEnabled },
             log: { message in if logging { print("[Click2] \(message)") } }
         )
-        let configured = Configured(matcher: LinkMatcher(hosts: config.hosts), client: client, logging: logging, hosts: config.hosts, attributionWindow: config.attributionWindow)
+        // Normalized again in case `hosts` was changed after init (it's a var); a no-op otherwise.
+        let hosts = Click2Config.normalizeHosts(config.hosts)
+        let configured = Configured(matcher: LinkMatcher(hosts: hosts), client: client, logging: logging, hosts: hosts, attributionWindow: config.attributionWindow)
         state.configure(configured, defaults: defaults ?? UserDefaults(suiteName: defaultsSuiteName) ?? .standard)
-        log("configured for \(config.hosts)")
+        log("configured for \(hosts)")
     }
 
     /// Whether opens and installs are recorded. Set it from your consent settings (e.g. where you
@@ -208,12 +214,14 @@ public enum Click2 {
         }
     }
 
-    private static let asaReportedKey = "asa_reported"
-
     /// Apple Search Ads attribution: call once at launch (e.g. after `configure`). On the first launch after an install
     /// it sends the AdServices attribution token to click2, which asks Apple which campaign led to the install; the
     /// install then shows in click2 analytics under channel "apple_search_ads". Later calls do nothing. Nothing is sent
     /// while tracking is off. iOS 14.3+; no ATT prompt needed (AdServices doesn't use the IDFA).
+    ///
+    /// The token goes to the first configured host (`Click2Config.hosts[0]`), which must be a link host like
+    /// `acme.click2.page`, not an email click-tracking domain. An attributed install counts as this device's install
+    /// report, so a link pasted later doesn't report another one.
     public static func reportAppleSearchAdsAttribution() {
         guard let s = configured(), isTrackingEnabled else { return }
         #if canImport(AdServices)
@@ -222,23 +230,31 @@ public enum Click2 {
         guard state.beginAppleSearchAds() else { return }
         // Detached: the token call is synchronous and shouldn't run on the main actor.
         Task.detached {
-            var reported = false
-            defer { state.endAppleSearchAds(reported: reported) }
-            guard let token = try? AAAttribution.attributionToken() else { return log("no AdServices token") }
-            // Apple needs a moment after install before it knows the attribution: a few tries, seconds apart.
-            for attempt in 1...3 {
-                switch await s.client.reportAppleSearchAds(token: token, userId: userId, host: s.hosts[0]) {
-                case .attributed, .organic:
-                    reported = true
-                    return log("Apple Search Ads attribution reported")
-                case .retry where attempt < 3:
-                    try? await Task.sleep(nanoseconds: 5_000_000_000)
-                default:
-                    return log("Apple Search Ads attribution not available yet; will retry next launch")
-                }
+            guard let token = try? AAAttribution.attributionToken() else {
+                state.endAppleSearchAds(reported: false, attributed: false)
+                return log("no AdServices token")
             }
+            await sendAppleSearchAdsToken(token, configured: s, retryDelay: 5_000_000_000)
         }
         #endif
+    }
+
+    /// Sends the token (a few tries, `retryDelay` ns apart) and ends the claim taken by `beginAppleSearchAds`.
+    private static func sendAppleSearchAdsToken(_ token: String, configured s: Configured, retryDelay: UInt64) async {
+        var answer = AppleSearchAdsAnswer.failed
+        defer { state.endAppleSearchAds(reported: answer == .attributed || answer == .organic, attributed: answer == .attributed) }
+        // Apple needs a moment after install before it knows the attribution: a few tries, seconds apart.
+        for attempt in 1...3 {
+            answer = await s.client.reportAppleSearchAds(token: token, userId: userId, host: s.hosts[0])
+            switch answer {
+            case .attributed, .organic:
+                return log("Apple Search Ads attribution reported")
+            case .retry where attempt < 3:
+                try? await Task.sleep(nanoseconds: retryDelay)
+            default:
+                return log("Apple Search Ads attribution not available yet; will retry next launch")
+            }
+        }
     }
 
     /// Records an in-app event, e.g. `await Click2.track("purchase", revenue: 24.99, currency: "USD")`.
@@ -343,6 +359,12 @@ public enum Click2 {
     static func unconfigureForTesting(failFast: Bool) {
         state.configure(nil, defaults: state.defaults)
         state.failFast = failFast
+    }
+
+    /// `reportAppleSearchAdsAttribution` with a given token (AdServices has none on macOS), without the retry delay.
+    static func reportAppleSearchAdsForTesting(token: String) async {
+        guard let s = configured(), isTrackingEnabled, state.beginAppleSearchAds() else { return }
+        await sendAppleSearchAdsToken(token, configured: s, retryDelay: 0)
     }
 
     /// The last background install report, so tests can wait for it.
