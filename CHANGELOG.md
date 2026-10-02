@@ -4,6 +4,8 @@ All notable changes to the click2 iOS SDK. The format follows [Keep a Changelog]
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-02
+
 ### Fixed
 
 - An attributed Apple Search Ads answer also marks the install as reported, so a link pasted later doesn't report a
@@ -40,6 +42,7 @@ First public release.
 - Install and open attribution, with a tracking switch (`isTrackingEnabled`) for consent.
 - Only the configured link hosts are ever contacted.
 
-[Unreleased]: https://github.com/click2-page/click2-ios/compare/0.3.0...HEAD
+[Unreleased]: https://github.com/click2-page/click2-ios/compare/0.3.1...HEAD
+[0.3.1]: https://github.com/click2-page/click2-ios/releases/tag/0.3.1
 [0.3.0]: https://github.com/click2-page/click2-ios/releases/tag/0.3.0
 [0.2.0]: https://github.com/click2-page/click2-ios/releases/tag/0.2.0
