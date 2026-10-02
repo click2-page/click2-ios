@@ -10,6 +10,7 @@
     { "referrer": "gclid=Cj0KCQ", "report": true, "why": "Google Ads click id without UTM tags" },
     { "referrer": "gbraid=0AAAA", "report": true },
     { "referrer": "wbraid=0AAAB", "report": true },
+    { "referrer": "utm_source=apps.facebook.com&utm_campaign=fb4a&utm_content=%7B%22app%22%3A1234567890%2C%22t%22%3A1700000000%2C%22source%22%3A%7B%22data%22%3A%224f2a9c1e4f2a9c1e4f2a9c1e4f2a9c1e4f2a9c1e4f2a9c1e4f2a9c1e4f2a9c1e%22%2C%22nonce%22%3A%220123456789abcdef01234567%22%7D%7D", "report": true, "why": "Meta ads install (utm_content carries encrypted JSON; real ones are often over 1,000 characters)" },
     { "referrer": "gclid=", "report": false, "why": "empty value" },
     { "referrer": "utm_source%3Dfacebook%26utm_campaign%3Dfall", "report": true, "why": "referrer still URL-encoded once" },
     { "referrer": "utm_source=smartlink&smartlink=https%3A%2F%2Fglobex.click2.page%2Fx", "report": false, "why": "a click2 link for another host" },

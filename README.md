@@ -14,7 +14,7 @@ The Android SDK is at [click2-page/click2-android](https://github.com/click2-pag
 **Swift Package Manager.** In Xcode: File → Add Package Dependencies → `https://github.com/click2-page/click2-ios`, then link the product **Click2**. Or in `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/click2-page/click2-ios", from: "0.2.0")
+.package(url: "https://github.com/click2-page/click2-ios", from: "0.3.1")
 ```
 
 Requirements: iOS 14+, Xcode 15+ (Swift 5.9). Swift 6 language mode is supported.
@@ -27,7 +27,7 @@ Requirements: iOS 14+, Xcode 15+ (Swift 5.9). Swift 6 language mode is supported
 applinks:$(CLICK2_HOST)        // acme.click2.page (App Store), acme-test.click2.page (staging)
 ```
 
-In the click2 dashboard (Team settings → iOS app), add `TEAMID.bundle.id`. Use the live team for the App Store bundle and the test environment for staging bundles.
+In the click2 dashboard (Apps & SDKs → App settings), add `TEAMID.bundle.id`. Use the live team for the App Store bundle and the test environment for staging bundles.
 
 To see changes immediately during development, use `applinks:$(CLICK2_HOST)?mode=developer` in debug builds and turn on Settings → Developer → Associated Domains Development.
 

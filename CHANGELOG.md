@@ -4,6 +4,15 @@ All notable changes to the click2 iOS SDK. The format follows [Keep a Changelog]
 
 ## [Unreleased]
 
+### Tests
+
+- Shared fixture `campaign-referrer.json`: a Meta ads install referrer case (used by the Android, React Native and
+  Flutter SDKs).
+
+### Docs
+
+- README: install snippet at 0.3.1; app settings are now under Apps & SDKs → App settings in the click2 dashboard.
+
 ## [0.3.1] - 2026-10-02
 
 ### Fixed
